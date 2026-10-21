@@ -256,6 +256,13 @@ KDL
   fi
 fi
 
+# --- claude-zellij -> ~/.local/bin ---
+# Wrapper that makes a restored zellij pane resume its Claude Code conversation
+# (see bin/claude-zellij). It finds claude-zellij-hook through its own resolved
+# path, so only the wrapper is linked.
+mkdir -p "$HOME/.local/bin"
+ln -sf "$DOTFILES_DIR/bin/claude-zellij" "$HOME/.local/bin/claude-zellij"
+
 # --- mosh-server + UTF-8 locales (no root; conda + ~/.locale) ---
 # mosh isn't in the mise registry and apt needs root, so install the conda-forge
 # build into an isolated prefix. mosh forwards the client's LANG (e.g.
