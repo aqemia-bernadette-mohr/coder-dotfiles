@@ -130,13 +130,17 @@ claude-zellij                    # takes the same flags as claude, e.g. --model
 - When zellij runs the saved command again (press Enter on the "Waiting to run" prompt), the wrapper
   runs `claude --resume <session-id>`. If the transcript no longer exists, it starts a new session.
 
-Flags are passed to `claude` on every launch, including resumes.
+Every interactive session in the pane is tracked, including ones started with `-r`/`--resume` (with
+an ID or the picker), `-c`/`--continue`, `--fork-session`, `--from-pr` and `--session-id`. On restore
+the wrapper removes those flags, because the saved session replaces them. Other flags are passed to
+`claude` on every launch, including resumes.
 
 These go straight to `claude`, without pane tracking:
 
 - a subcommand or a prompt (a first argument that does not start with `-`)
-- flags that pick a session: `-c`, `-r`, `--session-id`, `--from-pr`, `--teleport`
-- flags for other kinds of session: `-p`, `--bg`, `--cloud`, `--desktop`, `-w`, `--bare`
+- flags for sessions that are not interactive or do not stay in the pane: `-p`, `--bg`, `--cloud`,
+  `--desktop`, `--teleport`
+- flags that stop the hook from running or change where the transcript is kept: `--bare`, `-w`
 - `--settings`, because it would replace the wrapper's hook
 - `--help` and `--version`
 

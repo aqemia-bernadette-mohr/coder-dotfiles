@@ -11,9 +11,11 @@
 #     hook writes the current session ID and transcript path to a state file
 #     for the pane.
 #   - When Zellij runs the saved command again, this script reads the state
-#     file and starts "claude --resume <session-id>".
+#     file and starts "claude --resume <session-id>". Flags that chose the
+#     first session (--resume, --continue, --fork-session, --from-pr,
+#     --session-id) are removed, because the saved session replaces them.
 #
-# Flags are passed to claude on every launch, including resumes.
+# Other flags are passed to claude on every launch, including resumes.
 set -euo pipefail
 
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/claude-zellij"
@@ -30,17 +32,16 @@ have_jq=true
 command -v jq >/dev/null 2>&1 || have_jq=false
 
 if [[ "${1:-}" != --zellij-marker ]]; then
-    # Only plain interactive sessions are tracked. A subcommand or a prompt
-    # (first argument without a leading "-") goes straight to claude, and so
-    # do flags that pick a session, do not stay interactive in this pane, or
-    # would replace the wrapper's --settings.
+    # Every interactive session in this pane is tracked. A subcommand or a
+    # prompt (first argument without a leading "-") goes straight to claude,
+    # and so do flags for sessions that are not interactive or do not stay in
+    # this pane, and flags that would stop the hook from running.
     if [[ -n "${1:-}" && "$1" != -* ]]; then
         exec claude "$@"
     fi
     for arg in "$@"; do
         case "$arg" in
-            -p|--print|-c|--continue|-r|--resume|--resume=*|--session-id|--session-id=*|\
-            --from-pr|--from-pr=*|--teleport|--teleport=*|--bg|--background|--cloud|--desktop|\
+            -p|--print|--teleport|--teleport=*|--bg|--background|--cloud|--desktop|\
             -w|--worktree|--worktree=*|--settings|--settings=*|--bare|-h|--help|-v|--version)
                 exec claude "$@" ;;
         esac
@@ -74,10 +75,31 @@ if [[ -f "$state" ]]; then
     session_id="" transcript=""
     IFS=$'\t' read -r session_id transcript < "$state" || true
     if [[ "$session_id" =~ $uuid_re && -f "$transcript" ]]; then
+        # Drop the flags that chose the first session. -r/--resume and
+        # --from-pr take an optional value: like claude, treat the next
+        # argument as that value unless it starts with "-".
+        args=()
+        while (($#)); do
+            case "$1" in
+                -c|--continue|--fork-session|--resume=*|--from-pr=*|--session-id=*)
+                    shift ;;
+                -r|--resume|--from-pr)
+                    shift
+                    if (($#)) && [[ "$1" != -* ]]; then shift; fi ;;
+                --session-id)
+                    shift
+                    if (($#)); then shift; fi ;;
+                *)
+                    args+=("$1")
+                    shift ;;
+            esac
+        done
+        set -- ${args[@]+"${args[@]}"}
         cmd+=(--resume "$session_id")
     else
-        # A session that never received a message has no transcript.
-        echo "claude-zellij: session ${session_id:-?} has no transcript; starting a new session" >&2
+        # A session that never received a message has no transcript. Run the
+        # original arguments again: a new session, or the one they choose.
+        echo "claude-zellij: session ${session_id:-?} has no transcript; using the original arguments" >&2
     fi
 fi
 
