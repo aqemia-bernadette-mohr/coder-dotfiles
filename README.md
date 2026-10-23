@@ -80,6 +80,7 @@ fetch the MCP binaries) is authenticated rather than anonymous/rate-limited.
 | Function | Layer | Purpose |
 |----------|-------|---------|
 | `refresh-creds` | [general] | Refresh AWS Pod-Identity + CodeArtifact creds in the current shell (relevant to any long-running workspace) |
+| `claude` | [general] | Inside zellij, runs `claude-zellij` so restored panes resume their conversation (see [Claude Code in zellij](#claude-code-in-zellij)). Outside zellij, runs `claude` as usual. `command claude` skips the function |
 | `connect_to_db <env>` | [eng] | Open `psql` against a database by short env name. The env->profile map, secret id, and DSN key are read from `~/.connect_to_db.env` (kept in `$HOME`, not committed), so no environment or target names live in this repo |
 
 ### Aliases ([general], see `aliases/custom.bash`)
@@ -120,6 +121,8 @@ Claude with `claude-zellij` instead, and the restored pane resumes the right con
 ```bash
 claude-zellij                    # takes the same flags as claude, e.g. --model
 ```
+
+Inside zellij, the `claude` shell function does this for you, so typing `claude` is enough.
 
 - On first run the wrapper adds `--zellij-marker <uuid>` to its own command line, so the command
   zellij saves identifies the pane.
