@@ -53,6 +53,7 @@ workspace image; the dotfiles only wire them up.
 | **gh-stack** *(gh extension)* | [general] | `gh` extensions | `gh stack` - GitHub stacked PRs (`github/gh-stack`) |
 | **zellaude** *(zellij plugin)* | [general] | `.config/zellij/layouts/default.kdl` | Claude Code activity bar. Pinned to `v0.5.0`; zellij fetches the wasm on first use and it auto-installs hooks into `~/.claude/settings.json`. Needs `jq`. `install.sh` pre-grants its zellij plugin permissions (scoped to the pinned URL) so the first-run permission popup is skipped |
 | **leaf** | [general] | `~/.local/bin` | Terminal Markdown previewer (`leaf FILE.md`, `-w` to reload on save). Release binary from `RivoLink/leaf`, SHA256-verified; `leaf --update` moves to a newer release. Config symlinked from `.config/leaf/` so `Ctrl+E` opens vim (leaf ignores `$EDITOR` and defaults to nano) |
+| **claude-zellij** | [general] | `~/.local/bin` (symlink to `bin/`) | Runs Claude Code so that a restored zellij pane resumes its conversation. See [Claude Code in zellij](#claude-code-in-zellij). Needs `jq` |
 | **mosh-server** | [general] | `~/.local/mosh` | Roaming SSH; conda-forge build (no root needed) |
 | **UTF-8 locales** | [general] | `~/.locale` | `en_GB.UTF-8` / `en_US.UTF-8` via `localedef` (mosh needs a resolvable UTF-8 locale) |
 | **mcp-victoriametrics** | [eng] | `~/.local/bin` | observability-core plugin MCP (metrics) |
@@ -79,6 +80,7 @@ fetch the MCP binaries) is authenticated rather than anonymous/rate-limited.
 | Function | Layer | Purpose |
 |----------|-------|---------|
 | `refresh-creds` | [general] | Refresh AWS Pod-Identity + CodeArtifact creds in the current shell (relevant to any long-running workspace) |
+| `claude` | [general] | Inside zellij, runs `claude-zellij` so restored panes resume their conversation (see [Claude Code in zellij](#claude-code-in-zellij)). Outside zellij, runs `claude` as usual. `command claude` skips the function |
 | `connect_to_db <env>` | [eng] | Open `psql` against a database by short env name. The env->profile map, secret id, and DSN key are read from `~/.connect_to_db.env` (kept in `$HOME`, not committed), so no environment or target names live in this repo |
 
 ### Aliases ([general], see `aliases/custom.bash`)
@@ -94,6 +96,7 @@ install.sh              # entrypoint Coder runs on every start (idempotent)
 .config/starship.toml   # prompt config
 .config/zellij/         # zellij config.kdl + layouts/default.kdl (zellaude Claude Code bar)
 .config/leaf/           # leaf config.toml (Ctrl+E opens vim, not nano)
+bin/                    # claude-zellij wrapper + its SessionStart hook (wrapper linked into ~/.local/bin)
 aliases/custom.bash     # aliases (sourced for both bash and zsh)
 custom/custom.bash      # general interactive bash config: env, keybindings, refresh-creds
 engineering/            # engineering-only layer - delete for a general-purpose setup
@@ -108,6 +111,54 @@ engineering/            # engineering-only layer - delete for a general-purpose 
 > **Shell note:** this fork targets **bash**. Interactive config lives in `custom/custom.bash` and the
 > engineering `shell.bash`, both loaded via bash-it's `custom/` dir; the zsh branch does not source
 > them (zsh only sources `aliases/custom.bash`). Switching to zsh means porting those into the zsh path.
+
+## Claude Code in zellij
+
+When a zellij session dies (for example on a workspace restart), zellij restores each pane by running
+its saved command again. A pane that ran plain `claude` cannot know which conversation it had. Start
+Claude with `claude-zellij` instead, and the restored pane resumes the right conversation:
+
+```bash
+claude-zellij                    # takes the same flags as claude, e.g. --model
+```
+
+Inside zellij, the `claude` shell function does this for you, so typing `claude` is enough.
+
+- On first run the wrapper adds `--zellij-marker <uuid>` to its own command line, so the command
+  zellij saves identifies the pane.
+- It starts `claude` with a `SessionStart` hook (passed with `--settings`, so
+  `~/.claude/settings.json` is not changed). Claude Code runs the hook on startup, `/resume`, `/clear`
+  and compaction, and the hook writes the current session ID and transcript path to
+  `~/.local/state/claude-zellij/<uuid>`.
+- When zellij runs the saved command again (press Enter on the "Waiting to run" prompt), the wrapper
+  runs `claude --resume <session-id>`. If the transcript no longer exists, it starts a new session.
+
+Every interactive session in the pane is tracked, including ones started with `-r`/`--resume` (with
+an ID or the picker), `-c`/`--continue`, `--fork-session`, `--from-pr` and `--session-id`. On restore
+the wrapper removes those flags, because the saved session replaces them. Other flags are passed to
+`claude` on every launch, including resumes.
+
+These go straight to `claude`, without pane tracking:
+
+- a subcommand or a prompt (a first argument that does not start with `-`)
+- flags for sessions that are not interactive or do not stay in the pane: `-p`, `--bg`, `--cloud`,
+  `--desktop`, `--teleport`
+- flags that stop the hook from running or change where the transcript is kept: `--bare`, `-w`
+- `--settings`, because it would replace the wrapper's hook
+- `--help` and `--version`
+
+Do not pass a prompt after other flags (`claude-zellij --model opus "fix X"`): the wrapper tracks
+that pane, and each restore sends the prompt again.
+
+Tracking stops if hooks are disabled (`disableAllHooks`, or a managed policy that allows only managed
+hooks). Without `jq` the wrapper starts plain `claude`. If you open the same saved layout in two
+sessions at once, both panes resume the same conversation.
+
+A state file is deleted when it is older than 60 days and its transcript no longer exists.
+
+Adapted from the approach in
+[`Shengfeng233/zellij-claude-enhance`](https://github.com/Shengfeng233/zellij-claude-enhance) (MIT),
+reimplemented with Claude Code's documented hooks instead of its internal session files.
 
 ## Secrets & local config
 

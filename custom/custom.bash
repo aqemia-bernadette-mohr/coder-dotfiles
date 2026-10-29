@@ -79,3 +79,14 @@ refresh-creds() {
   [ -f ~/.codeartifact.env ] && source ~/.codeartifact.env
   [ -f ~/.aws-pod-identity.env ] && source ~/.aws-pod-identity.env
 }
+
+# Inside zellij, start Claude Code through claude-zellij so a restored pane
+# resumes its conversation (see bin/claude-zellij). Outside zellij there is
+# nothing to restore, so run claude as usual. `command claude` skips this.
+claude() {
+  if [[ -n "${ZELLIJ:-}" ]] && command -v claude-zellij >/dev/null 2>&1; then
+    claude-zellij "$@"
+  else
+    command claude "$@"
+  fi
+}
